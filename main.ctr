@@ -1,0 +1,165 @@
+import Library/Control/MethodResolve.
+var totalOps is Map new
+  put: 0 at: 'replace',
+  put: 0 at: 'delete',
+  put: 0 at: 'insert'.
+
+var totalSkipped is 0.
+# logic #
+
+Boolean on: 'and:' do: {:blk
+  ^me either: blk or: me.
+}.
+
+var disperse is {:h:g
+  {^((h count > 0) & (g count > 0)) and: {^((h head) = (g head)).}.} whileTrue: {#Ignore the parts that are already equal
+    h shift.
+    g shift.
+    totalSkipped +=: 1.
+  }.
+}.
+
+var biggest_sublist is {:h:g
+  var output is [].
+  var _is is [-1, -1].
+  h each: {:i:hv
+    g each: {:j:gv
+      ((output count > 0) & (output count > (h count min: g count))) break.
+      hv = gv ifTrue: {
+        [vis, voutput] is inspectSubset applyTo: h and: g and: i and: j and: [_is, output].
+        _is is vis.
+        output is voutput.
+      }.
+    }.
+  }.
+  ^[_is, output].
+}.
+
+var inspectSubset is {:h:g:i:j:is_oldsub
+  [_is, oldsub] is is_oldsub.
+  var items is Array < (h at: i).
+  var _nis is [i + 0, j + 0].
+  var eIndex1 is i.
+  var eIndex2 is j.
+  i is i + 1.
+  j is j + 1.
+  { var p is [
+      {^h count > i.},
+      {^g count > j.},
+      {^h at: i, = (g @ j).}
+    ].
+    ^p all: \:x x run.
+  } whileTrue: {
+    items push: h @ i.
+    eIndex1 is i.
+    eIndex2 is j.
+    i is i + 1.
+    j is j + 1.
+  }.
+  ^oldsub isNil either: [_nis, items] or: {
+    ^((oldsub count) < (items count)) either: [_nis, items] or: [_is, oldsub].
+  }.
+}.
+
+# OPs #
+
+var emitSetAll is {:idxs:h:g
+  Pen writeln: (idxs fmap: {:x
+    var r is ''.
+    (h @ x) !=: (g @ x), ifTrue: {
+      r is 'replace idx#%d (%s -> %s)' % [x + totalSkipped, h @ x, g @ x].
+      totalOps at: 'replace', +=: 1.
+    }.
+    ^r.
+  }, join: '\n').
+}.
+
+var emitInsert is {:value
+  Pen writeln: 'insert element %s' % [value].
+  totalOps at: 'insert', +=: 1.
+}.
+var emitDelete is {:value
+  Pen writeln: 'delete element at top (%s)' % [value].
+  totalOps at: 'delete', +=: 1.
+}.
+var emitDeleteAll is {:idxs:h
+  idxs each_v: {:idx
+    Pen writeln: 'delete element at %d (%s)' % [idx + totalSkipped, h @ idx].
+  }.
+  totalOps at: 'delete', +=: idxs count.
+}.
+# cli #
+
+Pen write: 'Enter your sequence: '.
+var seq is Program waitForInput trim regex: ?>[^\d]<? substitute: '' options: 'g', characters fmap: \:n n toNumber.
+
+Pen write: 'Enter the constant K: '.
+var Kcon is Program waitForInput trim toNumber.
+
+[at_hand, goal] is [(seq from: 0 length: Kcon + 1), (seq from: Kcon + 1 length: seq count - Kcon - 1)].
+
+Pen writeln: 'Sequence=(%L|%L) K=%d\nOutput would be: [%L]' % [at_hand, goal, Kcon, goal * 2].
+
+
+disperse applyTo: at_hand and: goal.
+
+[[hstart, gstart], sub] is biggest_sublist applyTo: at_hand and: goal.
+
+[hstart, gstart] is [(hstart max: 0), (gstart max: 0)].
+
+var hend is hstart + (sub count).
+var gend is gstart + (sub count).
+
+(gstart > hstart) ifTrue: {
+  var idxs is Array fill: (gstart - hstart) with: \:i i + hstart.
+  emitDeleteAll applyTo: idxs and: at_hand.
+  idxs each: {:i:v at_hand pop: v - i.}.
+  gstart is hstart.
+}.
+
+(gstart < hstart) ifTrue: {
+  var idxs is Array fill: (hstart - gstart) with: \:i i.
+  emitDeleteAll applyTo: idxs and: at_hand.
+  idxs count times: {at_hand shift.}.
+  hstart is gstart.
+}.
+
+# head: get it out of the way
+emitSetAll applyTo: (Array new fill: hstart with: \:i i) and: at_hand and: goal.
+
+
+at_hand is at_hand from: (hstart + (sub count)) lengthMax: at_hand count.
+goal is goal from: (gstart + (sub count)) lengthMax: goal count.
+
+{
+  [[hstart_, gstart_], sub] is biggest_sublist applyTo: at_hand and: goal.
+  [hstart_, gstart_] is [(hstart_ max: 0), (gstart_ max: 0)].
+  hstart is hstart_.
+  gstart is gstart_.
+  ^sub count > 0.
+} whileTrue: {
+  emitSetAll applyTo: (Array new fill: hstart with: \:i i) and: at_hand and: goal.
+  var hend is hstart + (sub count).
+  var gend is gstart + (sub count).
+  at_hand is at_hand from: hend lengthMax: at_hand count.
+  goal is goal from: gend lengthMax: goal count.
+}.
+
+{^(goal count > 0) & (at_hand count > 0).} whileTrue: {
+  emitSetAll applyTo: (Array < 0) and: at_hand and: goal.
+  goal shift.
+  at_hand shift.
+}.
+
+{^(goal count > 0).} whileTrue: {
+  emitInsert applyTo: (goal shift).
+}.
+{^(at_hand count > 0).} whileTrue: {
+  emitDelete applyTo: (at_hand shift).
+}.
+
+Pen writeln: 'Total Operations: '.
+
+totalOps each: {:k:v
+  Pen writeln: (k + ' : ' + v).
+}.
